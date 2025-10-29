@@ -173,7 +173,7 @@ class ZybotCommand:
         lines.append(color(EXECUTION_DIR, BOLD))
         if self.flags:
             lines.append(color('Flags:', BOLD, GREEN))
-            lines.append('  ' + ' '.join(self.flags))
+            lines.append(color('  ' + ' '.join(self.flags), BOLD))
         else:
             lines.append(color('Flags: (none)', DIM))
         if self.vars:
@@ -198,18 +198,7 @@ class ZybotCommand:
 
         lines.append(color('Full Command:', BOLD, GREEN))
         cmd = self.display_command()
-        if len(cmd) <= 100:
-            lines.append(color(f'  {cmd}', BOLD))
-        else:
-            current = '  '
-            for part in cmd.split():
-                if len(current) + len(part) + 1 > 100:
-                    lines.append(current.rstrip())
-                    current = '  ' + part + ' '
-                else:
-                    current += part + ' '
-            if current.strip():
-                lines.append(current.rstrip())
+        lines.append(color(f'  {cmd}', BOLD))
         lines.append(color(hr(), DIM))
         return '\n'.join(lines)
 
@@ -324,15 +313,13 @@ def execute(command: ZybotCommand) -> int:
 def interactive_menu() -> int:
     global _def_use_color
     _def_use_color = supports_color()
+    last_command: Optional[ZybotCommand] = None
     while True:
         print(color('ZyButler', CYAN))
         print(color(hr(), DIM))
-        print(color('Select components to provide (enter ? for format help):', CYAN))
-        print('  1) Variables + STTL + Path (full)')
-        print('  2) STTL only')
-        print('  3) Variables + STTL (no path)')
-        print('  4) Variables only')
-        print('  5) STTL + Path')
+        print(color('Main Menu:', CYAN))
+        print('  1) Generate new Zybot command')
+        if last_command: print('  2) Re-run last command')
         print('  0) Quit')
         print('  ?) Show format help')
         choice = input(color('Enter choice: ', BOLD)).strip()
@@ -340,45 +327,57 @@ def interactive_menu() -> int:
             print_format_help()
             continue
         if choice == '0':
-            print(color('Goodbye.', GREEN))
+            print(color('Goodbye.', BOLD,GREEN))
             return 0
-        need_vars = choice in {'1','3','4'}
-        need_sttl = choice in {'1','2','3','5'}
-        need_path = choice in {'1','5'}
-        if not need_vars and not need_sttl and not need_path:
+        if choice == '2':
+            if not last_command:
+                logging.error('No previous command to re-run.')
+                continue
+            print(color('\nRe-running previous command:', CYAN))
+            print(last_command.pretty())
+            exec_ans = input(color(f"Execute again from {EXECUTION_DIR}? (y/N): ", BOLD)).strip().lower()
+            if exec_ans == 'y':
+                rc = execute(last_command)
+                if rc != 0:
+                    logging.error('Execution failed with code %s', rc)
+                else:
+                    print(color('Execution completed.', BOLD, GREEN))
+            continue  # back to main menu
+        if choice != '1':
             logging.error('Invalid choice.')
             continue
+        # New command generation flow (simplified: always full Variables + STTL + Path)
+        print(color('\nProvide inputs for full command (Variables + STTL + Path). Enter ? for format help at any prompt.', CYAN))
+        need_vars = True
+        need_sttl = True
+        need_path = True
 
         vars_tokens: List[str] = []
-        if need_vars:
-            print(color('\nEnter variables (space-separated KEY:VALUE e.g. DUT1:12345678EE90) or Enter for none:', CYAN))
-            vars_input = input().strip()
-            vars_tokens = vars_input.split() if vars_input else []
-            try:
-                vars_list = parse_vars(vars_tokens, allow_empty=True)
-            except ValidationError as e:
-                logging.error("Variable error: %s", e)
-                continue
-        else:
-            vars_list = []
+        print(color('\nEnter variables (space-separated KEY:VALUE e.g. DUT1:ABC1234567 TESTDIR:TRUE) or Enter for none:', CYAN))
+        vars_input = input().strip()
+        vars_tokens = vars_input.split() if vars_input else []
+        try:
+            vars_list = parse_vars(vars_tokens, allow_empty=True)
+        except ValidationError as e:
+            logging.error("Variable error: %s", e)
+            continue
 
         sttls: List[str] = []
-        if need_sttl:
-            print(color('\nPaste STTL block (id:(STTL/STTL-...)):', CYAN))
-            sttl_raw = input().strip()
-            try:
-                sttls = parse_sttl_block(sttl_raw)
-            except ParseError as e:
-                logging.error("STTL error: %s", e)
-                continue
-        else:
-            sttls = []
+        print(color('\nPaste STTL block (id:(STTL/STTL-...)):', CYAN))
+        sttl_raw = input().strip()
+        if sttl_raw.strip() == '?':
+            print_format_help()
+            continue
+        try:
+            sttls = parse_sttl_block(sttl_raw)
+        except ParseError as e:
+            logging.error("STTL error: %s", e)
+            continue
 
         path: Optional[str] = None
-        if need_path:
-            print(color('\nEnter path (or Enter to skip):', CYAN))
-            path_in = input().strip()
-            path = path_in or None
+        print(color('\nEnter path (or Enter to skip):', CYAN))
+        path_in = input().strip()
+        path = path_in or None
 
         # Flags entry
         flags: List[str] = []
@@ -402,9 +401,23 @@ def interactive_menu() -> int:
                 logging.error("Execution failed with code %s", rc)
             else:
                 print(color('Execution completed.', BOLD, GREEN))
+                last_command = command  # store only on successful execution
+                # Immediate rerun loop
+                while True:
+                    rerun_ans = input(color('Re-run this command again? (y/N): ', BOLD)).strip().lower()
+                    if rerun_ans != 'y':
+                        break
+                    rc2 = execute(command)
+                    if rc2 != 0:
+                        logging.error('Execution failed with code %s', rc2)
+                        break
+                    else:
+                        print(color('Execution completed.', BOLD, GREEN))
+        else:
+            last_command = command  # store built command even if not executed for potential re-run preview
         again = input(color('\nGenerate another command? (y/N): ', BOLD)).strip().lower()
         if again != 'y':
-            print(color('Goodbye.', GREEN))
+            print(color('Goodbye.', BOLD, GREEN))
             return 0
     # Explicit return to satisfy static analysis (loop guarantees earlier returns)
     return 0
