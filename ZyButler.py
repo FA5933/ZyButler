@@ -97,16 +97,6 @@ RED = Fore.RED
 
 _def_use_color = True
 
-
-# ---------------- Exceptions ----------------
-
-class ParseError(ValueError):
-    pass
-
-class ValidationError(ValueError):
-    pass
-
-
 def supports_color() -> bool:
     if os.environ.get('NO_COLOR'):
         return False
@@ -129,6 +119,15 @@ def print_format_help():
         if line.strip():
             print(color(line, CYAN))
     print(color(hr(), CYAN))
+
+# ---------------- Exceptions ----------------
+
+class ParseError(ValueError):
+    pass
+
+class ValidationError(ValueError):
+    pass
+
 
 # ---------------- Dataclass ----------------
 
@@ -517,6 +516,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# --------------- Unit Tests (pytest) ---------------
-# Tests are placed in a separate file (test_ZyButler.py).
