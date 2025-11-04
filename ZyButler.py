@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
-import sys
 import re
 import argparse
 import logging
@@ -275,6 +274,13 @@ def build_command(vars_tokens: Sequence[str], sttl_block: str, path: Optional[st
     flag_tokens = parse_flags(flags or [])
     return ZybotCommand(vars=vars_list, sttls=sttls, path=path or None, flags=flag_tokens)
 
+# Overload build_command to accept sttl_ids as list
+
+def build_command(vars_tokens, sttl_ids, path, allow_empty_vars=False, flags=None):
+    vars_list = parse_vars(vars_tokens, allow_empty=allow_empty_vars)
+    flag_tokens = parse_flags(flags or [])
+    return ZybotCommand(vars=vars_list, sttls=sttl_ids, path=path or None, flags=flag_tokens)
+
 # --------------- Zybot Executable Resolution ---------------
 
 def execute(command: ZybotCommand) -> int:
@@ -504,11 +510,196 @@ def cli(argv: List[str]) -> int:
     else:
         return 0
 
+# ---------------- GUI Interface ----------------
+
+def main_gui():
+    import tkinter as tk
+    from tkinter import ttk, messagebox, scrolledtext
+    global _def_use_color
+    _def_use_color = True
+
+    # --- Validation helpers ---
+    def validate_serial(serial):
+        return serial.isalnum() and len(serial) >= MIN_SERIAL_LEN
+
+    def validate_flag(flag):
+        try:
+            parse_flags([flag])
+            return True, ""
+        except ValidationError as e:
+            return False, str(e)
+
+    def validate_sttl(sttl):
+        try:
+            parse_sttl_block(sttl)
+            return True, ""
+        except ParseError as e:
+            return False, str(e)
+
+    # --- Main window ---
+    root = tk.Tk()
+    root.title("ZyButler GUI")
+    root.geometry("700x600")
+    style = ttk.Style()
+    style.theme_use('clam')
+    style.configure('TButton', font=('Segoe UI', 11))
+    style.configure('TLabel', font=('Segoe UI', 11))
+    style.configure('TEntry', font=('Segoe UI', 11))
+    style.configure('TCheckbutton', font=('Segoe UI', 11))
+
+    # --- Variables ---
+    dut_vars = []
+    dut_entries = []
+    flags = []
+    sttl_block = tk.StringVar()
+    test_path = tk.StringVar()
+    color_enabled = tk.BooleanVar(value=True)
+    output_text = None
+
+    # --- DUT Section ---
+    dut_frame = ttk.LabelFrame(root, text="Android Devices (DUT serials)")
+    dut_frame.pack(fill='x', padx=10, pady=5)
+
+    def add_dut():
+        idx = len(dut_entries) + 1
+        dut_var = tk.StringVar()
+        dut_vars.append(dut_var)
+        row = ttk.Frame(dut_frame)
+        ttk.Label(row, text=f"DUT{idx} serial:").pack(side='left')
+        entry = ttk.Entry(row, textvariable=dut_var, width=20)
+        entry.pack(side='left', padx=5)
+        def remove():
+            row.destroy()
+            dut_vars.remove(dut_var)
+            dut_entries.remove(entry)
+        ttk.Button(row, text="Remove", command=remove).pack(side='left', padx=5)
+        row.pack(fill='x', pady=2)
+        dut_entries.append(entry)
+    ttk.Button(dut_frame, text="Add Device", command=add_dut).pack(anchor='w', padx=5, pady=2)
+
+    # --- STTL Section ---
+    sttl_frame = ttk.LabelFrame(root, text="STTL Block (Test Cases)")
+    sttl_frame.pack(fill='x', padx=10, pady=5)
+    ttk.Label(sttl_frame, text="Paste STTL block (e.g. id:(STTL/STTL-123 ...)):").pack(anchor='w')
+    sttl_entry = ttk.Entry(sttl_frame, textvariable=sttl_block, width=80)
+    sttl_entry.pack(fill='x', padx=5, pady=2)
+
+    # --- Path Section ---
+    path_frame = ttk.LabelFrame(root, text="Test Path (optional)")
+    path_frame.pack(fill='x', padx=10, pady=5)
+    ttk.Label(path_frame, text="Test case path:").pack(anchor='w')
+    path_entry = ttk.Entry(path_frame, textvariable=test_path, width=80)
+    path_entry.pack(fill='x', padx=5, pady=2)
+
+    # --- Flags Section ---
+    flag_frame = ttk.LabelFrame(root, text="Additional zybot Flags")
+    flag_frame.pack(fill='x', padx=10, pady=5)
+    flag_var = tk.StringVar()
+    def add_flag():
+        val = flag_var.get().strip()
+        valid, msg = validate_flag(val)
+        if not val:
+            return
+        if not valid:
+            messagebox.showerror("Invalid Flag", msg)
+            return
+        flags.append(val)
+        flag_list.insert('end', val)
+        flag_var.set("")
+    ttk.Label(flag_frame, text="Flag (e.g. -L TRACE --dryrun):").pack(anchor='w')
+    flag_entry = ttk.Entry(flag_frame, textvariable=flag_var, width=40)
+    flag_entry.pack(side='left', padx=5)
+    ttk.Button(flag_frame, text="Add Flag", command=add_flag).pack(side='left', padx=5)
+    flag_list = tk.Listbox(flag_frame, height=3)
+    flag_list.pack(fill='x', padx=5, pady=2)
+    def remove_flag():
+        sel = flag_list.curselection()
+        if sel:
+            idx = sel[0]
+            flags.pop(idx)
+            flag_list.delete(idx)
+    ttk.Button(flag_frame, text="Remove Selected", command=remove_flag).pack(anchor='w', padx=5)
+
+    # --- Color Option ---
+    color_frame = ttk.Frame(root)
+    color_frame.pack(fill='x', padx=10, pady=2)
+    ttk.Checkbutton(color_frame, text="Enable color output", variable=color_enabled).pack(anchor='w')
+
+    # --- Output Section ---
+    output_frame = ttk.LabelFrame(root, text="Output / Command Summary")
+    output_frame.pack(fill='both', expand=True, padx=10, pady=5)
+    output_text = scrolledtext.ScrolledText(output_frame, height=12, font=('Consolas', 10))
+    output_text.pack(fill='both', expand=True)
+
+    # --- Command Construction & Execution ---
+    def build_command_from_gui():
+        # Gather DUTs
+        dut_tokens = []
+        for idx, var in enumerate(dut_vars):
+            val = var.get().strip()
+            if val:
+                if not validate_serial(val):
+                    messagebox.showerror("Invalid Serial", f"DUT{idx+1} serial must be alphanumeric and length >= {MIN_SERIAL_LEN}")
+                    return None
+                dut_tokens.append(f"DUT{idx+1}:{val}")
+        # Path
+        path = test_path.get().strip() or None
+        # Flags
+        flag_list_copy = list(flags)
+        # STTL block
+        sttl_raw = sttl_block.get().strip()
+        valid, msg = validate_sttl(sttl_raw)
+        if not valid:
+            messagebox.showerror("Invalid STTL Block", msg)
+            return None
+        try:
+            cmd = build_command(dut_tokens, sttl_raw, path, allow_empty_vars=True, flags=flag_list_copy)
+            return cmd
+        except (ValidationError, ParseError) as e:
+            messagebox.showerror("Input Error", str(e))
+            return None
+
+    def show_summary():
+        cmd = build_command_from_gui()
+        if not cmd:
+            return
+        global _def_use_color
+        _def_use_color = color_enabled.get()
+        output_text.delete('1.0', 'end')
+        output_text.insert('end', cmd.pretty())
+
+    def run_zybot():
+        cmd = build_command_from_gui()
+        if not cmd:
+            return
+        global _def_use_color
+        _def_use_color = color_enabled.get()
+        output_text.delete('1.0', 'end')
+        output_text.insert('end', cmd.pretty() + '\n\n')
+        output_text.insert('end', color('Executing zybot...\n', BOLD, YELLOW))
+        root.update()
+        rc = execute(cmd)
+        output_text.insert('end', color(f'Execution finished with code {rc}\n', BOLD, GREEN if rc == 0 else RED))
+
+    # --- Buttons ---
+    btn_frame = ttk.Frame(root)
+    btn_frame.pack(fill='x', padx=10, pady=5)
+    ttk.Button(btn_frame, text="Show Command Summary", command=show_summary).pack(side='left', padx=5)
+    ttk.Button(btn_frame, text="Run zybot", command=run_zybot).pack(side='left', padx=5)
+    ttk.Button(btn_frame, text="Quit", command=root.destroy).pack(side='right', padx=5)
+
+    root.mainloop()
+
 # ---------------- Entry Point ----------------
 
 def main():
+    exit_code = 0  # Ensure exit_code is always defined
+    import sys
     try:
-        exit_code = cli(sys.argv[1:])
+        if len(sys.argv) > 1 and sys.argv[1] == "--gui":
+            main_gui()
+        else:
+            cli(sys.argv[1:])
     except KeyboardInterrupt:
         logging.error("Interrupted by user")
         exit_code = 130
@@ -516,3 +707,28 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# ----------------- Utility for GUI/Parsing -----------------
+
+def validate_serial(serial):
+    return serial.isalnum() and len(serial) >= MIN_SERIAL_LEN
+
+def validate_flag(flag):
+    try:
+        parse_flags([flag])
+        return True, ""
+    except ValidationError as e:
+        return False, str(e)
+
+def parse_sttl_ids_any(raw: str) -> list:
+    import re
+    pattern = re.compile(r'(?:STTL\/STTL-|STTL-)?(\d{4,})')
+    ids = pattern.findall(raw)
+    unique = []
+    seen = set()
+    for idnum in ids:
+        sid = f'STTL-{idnum}'
+        if sid not in seen:
+            seen.add(sid)
+            unique.append(sid)
+    return unique
