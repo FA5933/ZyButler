@@ -47,6 +47,12 @@ class ZyButlerGUI:
 
         def resize_main_frame(event):
             main_canvas.itemconfig(main_frame_id, width=event.width)
+            # Show scrollbar only if content overflows
+            bbox = main_canvas.bbox("all")
+            if bbox and bbox[3] > event.height:
+                main_scroll.pack(side="right", fill="y")
+            else:
+                main_scroll.pack_forget()
         main_canvas.bind("<Configure>", resize_main_frame)
 
         # Enable mouse wheel scrolling
@@ -162,7 +168,7 @@ class ZyButlerGUI:
         flag_checks_frame.grid(row=1, column=0, sticky='w', padx=8)
         for idx, flag in enumerate(common_flags):
             var = tk.BooleanVar()
-            chk = ttk.Checkbutton(flag_checks_frame, text=flag, variable=var)
+            chk = ttk.Checkbutton(flag_checks_frame, text=flag, variable=var, command=self.update_command)
             chk.grid(row=0, column=idx, padx=4, sticky='w')
             self.flag_vars[flag] = var
         ttk.Label(flag_frame, text="Add custom flag:").grid(row=2, column=0, sticky='w', padx=8, pady=(8,2))
