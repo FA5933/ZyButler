@@ -5,7 +5,6 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import subprocess
 import ZyButler
-from PIL import Image, ImageTk
 import os
 
 class ZyButlerGUI:
@@ -62,12 +61,6 @@ class ZyButlerGUI:
         main_canvas.bind_all("<Button-4>", lambda e: main_canvas.yview_scroll(-1, "units"))  # Linux
         main_canvas.bind_all("<Button-5>", lambda e: main_canvas.yview_scroll(1, "units"))   # Linux
 
-        # Load icons
-        self.icon_add = self.load_icon('add.png', fallback='plus')
-        self.icon_remove = self.load_icon('remove.png', fallback='minus')
-        self.icon_copy = self.load_icon('copy.png', fallback='copy')
-        self.icon_run = self.load_icon('run.png', fallback='play')
-
         ttk.Label(self.main_frame, text="ZyButler Android Test Runner", style='Header.TLabel').grid(row=0, column=0, columnspan=2, pady=(0, 24), sticky='ew', padx=(0,0))
 
         self.device_list = self.get_connected_devices()
@@ -80,19 +73,6 @@ class ZyButlerGUI:
         self.output_text = None
 
         self.build_gui()
-
-    def load_icon(self, name, fallback=None):
-        # Try to load PNG icon from local directory, fallback to unicode
-        icon_path = os.path.join(os.path.dirname(__file__), name)
-        try:
-            img = Image.open(icon_path).resize((18,18))
-            return ImageTk.PhotoImage(img)
-        except Exception:
-            if fallback == 'plus': return None
-            if fallback == 'minus': return None
-            if fallback == 'copy': return None
-            if fallback == 'play': return None
-            return None
 
     def get_connected_devices(self):
         try:
@@ -122,8 +102,7 @@ class ZyButlerGUI:
         self.device_combobox.grid(row=0, column=0, sticky='ew', padx=8, pady=4)
         self.device_combobox.set("")
         # Device add button
-        add_btn_args = self.icon_or_text(self.icon_add, "+")
-        ttk.Button(device_row, width=3, command=self.add_device, **add_btn_args).grid(row=0, column=1, padx=4)
+        ttk.Button(device_row, width=3, command=self.add_device, text="+").grid(row=0, column=1, padx=4)
         self.device_list_frame = ttk.Frame(dut_frame)
         self.device_list_frame.grid(row=2, column=0, sticky='ew', padx=8, pady=4)
         self.device_list_frame.columnconfigure(0, weight=1)
@@ -179,8 +158,7 @@ class ZyButlerGUI:
         custom_flag_entry = ttk.Entry(custom_flag_row, textvariable=self.custom_flag_var, width=40)
         custom_flag_entry.grid(row=0, column=0, sticky='ew', padx=8, pady=4)
         # Custom flag add button
-        add_flag_btn_args = self.icon_or_text(self.icon_add, "+")
-        ttk.Button(custom_flag_row, width=3, command=self.add_custom_flag, **add_flag_btn_args).grid(row=0, column=1, padx=4)
+        ttk.Button(custom_flag_row, width=3, command=self.add_custom_flag, text="+").grid(row=0, column=1, padx=4)
         self.custom_flag_list_frame = ttk.Frame(flag_frame)
         self.custom_flag_list_frame.grid(row=4, column=0, sticky='ew', padx=8, pady=4)
         self.custom_flag_list_frame.columnconfigure(0, weight=1)
@@ -198,13 +176,11 @@ class ZyButlerGUI:
         btns_row = ttk.Frame(output_frame)
         btns_row.grid(row=0, column=1, sticky='e', padx=8)
         # Copy and run buttons
-        copy_btn_args = self.icon_or_text(self.icon_copy, "Copy")
-        run_btn_args = self.icon_or_text(self.icon_run, "Run zybot")
-        ttk.Button(btns_row, command=self.copy_command, **copy_btn_args).pack(side='left', padx=8)
-        ttk.Button(btns_row, command=self.run_zybot, **run_btn_args).pack(side='left', padx=8)
+        ttk.Button(btns_row, command=self.copy_command, text="Copy").pack(side='left', padx=8)
+        ttk.Button(btns_row, command=self.run_zybot, text="Run zybot").pack(side='left', padx=8)
 
     def icon_or_text(self, icon, text):
-        return {'image': icon, 'text': text, 'compound': 'left'} if icon else {'text': text}
+        return {'text': text}
 
     def add_device(self):
         serial = self.device_combobox.get().strip()
@@ -217,10 +193,9 @@ class ZyButlerGUI:
         for widget in self.device_list_frame.winfo_children():
             widget.destroy()
         for idx, serial in enumerate(self.dut_vars):
-            btn_args = self.icon_or_text(self.icon_remove, "-")
             row = ttk.Frame(self.device_list_frame)
             ttk.Label(row, text=serial).pack(side='left', padx=4)
-            ttk.Button(row, width=3, command=lambda i=idx: self.remove_device(i), **btn_args).pack(side='left', padx=4)
+            ttk.Button(row, width=3, command=lambda i=idx: self.remove_device(i), text="-").pack(side='left', padx=4)
             row.pack(anchor='w', pady=2)
 
     def remove_device(self, idx):
@@ -239,10 +214,9 @@ class ZyButlerGUI:
         for widget in self.test_list_frame.winfo_children():
             widget.destroy()
         for idx, tid in enumerate(self.test_ids):
-            btn_args = self.icon_or_text(self.icon_remove, "-")
             row = ttk.Frame(self.test_list_frame)
             ttk.Label(row, text=tid).pack(side='left', padx=4)
-            ttk.Button(row, width=3, command=lambda i=idx: self.remove_test_id(i), **btn_args).pack(side='left', padx=4)
+            ttk.Button(row, width=3, command=lambda i=idx: self.remove_test_id(i), text="-").pack(side='left', padx=4)
             row.pack(anchor='w', pady=2)
 
     def remove_test_id(self, idx):
@@ -262,10 +236,9 @@ class ZyButlerGUI:
         for widget in self.custom_flag_list_frame.winfo_children():
             widget.destroy()
         for idx, flag in enumerate(self.custom_flags):
-            btn_args = self.icon_or_text(self.icon_remove, "-")
             row = ttk.Frame(self.custom_flag_list_frame)
             ttk.Label(row, text=flag).pack(side='left', padx=4)
-            ttk.Button(row, width=3, command=lambda i=idx: self.remove_custom_flag(i), **btn_args).pack(side='left', padx=4)
+            ttk.Button(row, width=3, command=lambda i=idx: self.remove_custom_flag(i), text="-").pack(side='left', padx=4)
             row.pack(anchor='w', pady=2)
 
     def remove_custom_flag(self, idx):
